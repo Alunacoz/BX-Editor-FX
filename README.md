@@ -1,12 +1,12 @@
 # BounceX Editor
 
-A standalone path editor for [BounceX-Viewer](https://github.com/Alunacoz/BounceX-Viewer). Sync video playback with marker placement and export `.bx` or `.bx2` path files. No install required — open `editor.html` in a modern browser.
+A standalone path editor for [BounceX-Viewer](https://github.com/Alunacoz/BounceX-Viewer). Sync video playback with marker placement and export `.bx` or `.bx2` path files. This tool and summary (right now) have been written with generative AI so it may not be perfectly accurate. This is currently in a PROTOTYPE stage. It is NOT recommended to actually attempt to use this now, but I figured that it might as well be public if anyone wants to use it right away despite the drawbacks.
 
 ---
 
 ## Getting Started
 
-1. Open `editor.html` in Chrome, Edge, or another Chromium-based browser
+1. Run `./StartWebsite.sh` and open the link in any browser.
 2. Click **Load Video** (or drag a video file onto the window)
 3. Click **Open path…** to load an existing `.bx` or `.bx2` file (optional)
 4. Use the timeline and controls to place and edit markers
