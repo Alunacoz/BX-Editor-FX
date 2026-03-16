@@ -1,6 +1,6 @@
 # BounceX Editor
 
-A standalone path editor for [BounceX-Viewer](https://github.com/Alunacoz/BounceX-Viewer). Sync video playback with marker placement and export `.bx` path files. This tool and summary (right now) have been written with generative AI so it may not be perfectly accurate. This is currently in a PROTOTYPE stage. It is NOT recommended to actually attempt to use this now, but I figured that it might as well be public if anyone wants to use it right away despite the drawbacks.
+A standalone path editor for [BounceX-Viewer](https://github.com/Alunacoz/BounceX-Viewer). Sync video playback with marker placement and export `.bx` path files. This tool and summary (right now) have been written with generative AI so it may not be perfectly accurate. For most questions that are not answered here, please contact me (Alunacoz) on the [DH Discord Server](https://discord.gg/u6CZ3Zm4PC)!
 
 ---
 
@@ -12,8 +12,6 @@ A standalone path editor for [BounceX-Viewer](https://github.com/Alunacoz/Bounce
 4. Use the timeline and controls to place and edit markers
 5. Click **Export .bx** to save
 
----
-
 ## Keyboard Shortcuts
 
 | Key | Action |
@@ -21,13 +19,13 @@ A standalone path editor for [BounceX-Viewer](https://github.com/Alunacoz/Bounce
 | `Space` | Play / Pause |
 | `M` | Add marker at current frame |
 | `Delete` / `Backspace` | Delete selected markers or selected effect |
-| `←` | Step 1 frame back (or set selected marker depth to 0.0) |
-| `→` | Step 1 frame forward (or set selected marker depth to 1.0) |
-| `↑` | Set selected marker depth to 0.5 |
+| `←` | Step 1 frame back, **or** set all selected markers to depth 0.0 |
+| `→` | Step 1 frame forward, **or** set all selected markers to depth 1.0 |
+| `↑` | Set all selected markers to depth 0.5 |
 | `Shift+←` / `Shift+→` | Step 10 frames |
 | `[` | Jump to previous marker |
 | `]` | Jump to next marker |
-| `R` | Toggle record mode (only active when video is playing) |
+| `R` | Toggle record mode (starts video playback if paused) |
 | `Ctrl+A` | Select all markers |
 | `Ctrl+Z` | Undo |
 | `Ctrl+Y` / `Ctrl+Shift+Z` | Redo |
@@ -36,36 +34,39 @@ A standalone path editor for [BounceX-Viewer](https://github.com/Alunacoz/Bounce
 | `Ctrl+V` | Paste at playhead position |
 | `Escape` | Exit record mode / clear selection |
 
+Arrow keys set depth when **one or more** markers are selected (not just one). When nothing is selected they step the playhead.
+
 ---
 
 ## Timeline Controls
 
 ### Marker Timeline
 
-- **Click** empty space → seek to that frame and clear selection
-- **Click** a marker → select it; seek to it on release (not during drag)
-- **Drag** a selected marker left/right → move it; snaps to playhead within 10px — the playhead does **not** move while dragging so you can pre-position it as a snap target
+- **Click** empty space → seek and clear selection
+- **Click** a marker → select it; seek on release (the playhead does **not** move while dragging, so you can pre-position it as a snap target)
+- **Drag** a marker → move it; snaps to playhead within 10px
 - **Shift+Click** → range-select from last click
 - **Ctrl+Click** → toggle individual markers
-- **Scroll wheel** → scroll
-- **Ctrl+Scroll** → zoom in/out
-- Drag the **resize handle** above the toolbar to change timeline height
+- **Scroll wheel** → scroll; **Ctrl+Scroll** → zoom
+- Drag the **resize handle** above the toolbar to change height
 
-Marker diamonds are drawn at their depth position on the waveform (depth 0 = top, depth 1 = bottom), white with an accent or teal outline when selected or nearest.
+Marker diamonds sit at their depth position on the waveform (depth 0 = top, depth 1 = bottom), white fill with accent/teal outline when selected or nearest.
 
 ### Effects Timeline
 
 - **Double-click** empty row → open effect type picker
-- **Drag** an effect block → move it; drag vertically to change layer
+- **Drag** a block horizontally → move it; drag vertically to change layer
 - **Drag** left/right edge → resize duration
-- **Click** → select it and open its properties in the right panel
+- **Click** → select and open properties
 - **Del** → delete selected effect
+
+Effects on the **same layer** collide — they cannot overlap. Dragging one into another pushes up to the neighbour's edge. Drag far enough past a neighbour and the block passes through to the other side; the barrier then applies from that side when you drag back. To overlap effects intentionally, place them on **different layers**.
 
 ---
 
 ## Record Mode
 
-Press `R` to enter record mode (only available while the video is playing — the button is disabled when paused). The video auto-plays on entry. While playing:
+Press `R` to enter record mode. If the video is paused it starts automatically. While playing:
 
 | Key | Depth stamped |
 |-----|---------------|
@@ -73,99 +74,136 @@ Press `R` to enter record mode (only available while the video is playing — th
 | `↑` | 0.5 (half depth) |
 | `→` | 1.0 (full depth) |
 
-Record mode exits automatically if the video pauses or ends. Press `R` or `Escape` to exit manually.
+Record mode exits automatically when the video pauses or ends. Press `R` or `Escape` to exit manually.
+
+---
+
+## Generate Cycle
+
+The **Generate Cycle** button (clock icon, in the Markers panel header) places depth-0 markers at a given BPM starting from the playhead.
+
+| Field | Description |
+|-------|-------------|
+| BPM | Beats per minute. Supports decimals (e.g. 122.4). Use **½** / **×2** to halve or double. |
+| Offset beats | Skip this many beats before placing the first marker (useful for pickup bars). |
+| Count | Number of markers to place. Leave blank to fill the entire timeline from the playhead. |
+
+**Fractional BPM accuracy:** each beat's ideal position is `startFrame + n × framesPerBeat` computed as a float and rounded to the nearest integer. This means rounding error never compounds — each beat independently corrects for the previous one. At 122 BPM the maximum drift is well under half a frame across hundreds of beats.
 
 ---
 
 ## Effects
 
-The Effects timeline is hidden by default. Click **▸ EFFECTS** in the timeline toolbar to reveal it. Effects are stored in the exported `.bx` file and rendered by BounceX-Viewer at playback time.
+The Effects timeline is hidden by default. Click **▸ EFFECTS** in the timeline toolbar to reveal it. Effects are stored inside the exported `.bx` file and rendered by BounceX-Viewer at playback time.
 
-When you create a new effect, the editor remembers your last-used settings for that effect type and pre-fills them.
+Last-used settings per effect type are remembered and pre-filled when you create the next effect of the same type.
 
 ### Text Overlay
 
-Displays fading text on the path preview canvas. Position and size are expressed as a percentage of the **path area height**, so the text scales consistently regardless of canvas size, viewer mode (normal, overlay, theater, fullscreen), or zoom level.
+Displays fading text on the path canvas. Size and position are percentages of the **path area**, so they look consistent across all canvas sizes and viewer modes.
 
 | Property | Description |
 |----------|-------------|
-| Text | Content; `\n` for line breaks |
+| Text | Content; `\n` for line breaks. Long text auto-shrinks to fit. |
 | Font | Built-in list or upload a custom `.ttf`/`.otf`/`.woff` |
 | Size | % of path area height (default 50%) |
 | Color | Text colour |
-| Opacity | 0–1, multiplied with fade alpha |
-| Position X / Y | % of path area width / height (0,0 = top-left of path area) |
+| Opacity | 0–1, multiplied by fade alpha |
+| Position X / Y | % of path area (0,0 = top-left) |
 | Fade In / Fade Out | Duration in frames |
 
 ### Path Color
 
-Smoothly transitions the path waveform colour and ball colour using linear RGB interpolation blended by the fade alpha.
+Smoothly transitions the waveform and ball colour using linear RGB interpolation.
 
 | Property | Description |
 |----------|-------------|
 | Path | Target waveform colour |
 | Ball | Target ball colour |
-| Fade In / Fade Out | Frames to blend in / out |
+| Fade In / Fade Out | Blend duration in frames |
 
 ### Path Speed
 
-Changes how fast the path waveform scrolls horizontally. Affects both the editor preview and the viewer. The transition is smooth — the waveform stretches frame-by-frame using per-frame speed integration, so only the zone inside the effect gets stretched. Frames outside the effect remain at normal spacing.
+Changes how fast the waveform scrolls. Transition is smooth — speed is lerped using the fade alpha, and each frame's x-position is integrated individually so only the affected zone stretches.
 
 | Property | Description |
 |----------|-------------|
-| Speed | Target playback speed: 0.5×, 0.75×, 1×, 1.25×, 1.5×, 1.75×, 2×, 2.5×, 3×, 3.5×, 4× |
-| Fade In / Fade Out | Frames over which speed ramps up / down (smoothed via lerp) |
+| Speed | 0.5×, 0.75×, 1×, 1.25×, 1.5×, 1.75×, 2×, 2.5×, 3×, 3.5×, 4× |
+| Fade In / Fade Out | Frames to ramp up / down |
 
 ---
 
-## Export Format
+## Export
 
-All files are exported as `.bx`. The internal structure depends on whether effects are present:
+Click **Export .bx** to save. In Chrome/Edge a native OS save dialog appears with a pre-filled name you can edit. In Firefox a prompt asks for a filename before downloading.
 
-| Condition | Internal structure |
-|-----------|--------------------|
-| No effects | Plain `{"frame": [depth, trans, ease, aux], ...}` — identical to original `.bx`, fully compatible with all BounceX tools |
-| Has effects | `{"version": 2, "markers": {...}, "effects": [...]}` — versioned structure inside a `.bx` file |
+The internal file structure depends on whether effects are present:
 
-**Open path…** accepts both structures automatically. `.bx2` files (an older extension) are also accepted.
+| Condition | Structure |
+|-----------|-----------|
+| No effects | Plain `{"frame": [depth, trans, ease, aux], ...}` — identical to original `.bx` |
+| Has effects | `{"version": 2, "markers": {...}, "effects": [...]}` |
+
+**Open path…** accepts both automatically. `.bx2` files (older extension) are also accepted.
 
 ---
 
 ## Copy / Paste
 
-`Ctrl+C` copies the current selection — either selected markers or the selected effect. `Ctrl+V` pastes at the current playhead:
+`Ctrl+C` copies selected markers or the selected effect. `Ctrl+V` pastes at the playhead:
 
-- **Markers** — pasted with an offset so the first copied marker lands at the playhead. Frames already occupied by an existing marker are skipped.
-- **Effects** — pasted starting at the playhead with the same duration, auto-assigned to an available layer.
+- **Markers** — offset so the first marker lands at the playhead; occupied frames are skipped
+- **Effects** — start at the playhead, same duration, auto-assigned to a free layer
 
-`Ctrl+X` copies and immediately deletes. A brief flash message in the toolbar confirms each operation.
+`Ctrl+X` copies and deletes. A flash message in the toolbar confirms each operation.
 
 ---
 
 ## Undo / Redo
 
-Every mutation is undoable: adding/deleting/moving markers, changing depth/transition/ease, adding/deleting effects. The history stack holds up to 100 snapshots. Use `Ctrl+Z` / `Ctrl+Y` or the toolbar buttons.
+All mutations are undoable (add/delete/move markers, depth/transition/ease changes, add/delete effects). Stack holds 100 snapshots. `Ctrl+Z` / `Ctrl+Y` or the toolbar buttons.
 
 ---
 
 ## Layout Persistence
 
-Panel widths, timeline heights, and effects panel visibility are saved to `localStorage` and restored on next open. To change the default sizes for a fresh session, edit the constants near the top of `editor.js`:
+Panel widths, timeline heights, and effects panel visibility are saved to `localStorage` and restored on next open.
+
+To change the default sizes for a fresh session, edit the constants near the top of `editor.js`:
 
 ```js
-const TL_H_DEFAULT    = 220   // marker timeline default height (px)
-const PROPS_W_DEFAULT = 272   // right panel default width (px)
+const TL_H_DEFAULT    = 220   // marker timeline height (px)
+const PROPS_W_DEFAULT = 272   // right panel width (px)
 ```
 
-Both panels are also user-resizable by dragging their edges.
+---
+
+## Running Locally
+
+### Linux / macOS
+
+```bash
+chmod +x StartEditor.sh
+./StartEditor.sh
+```
+
+### Windows
+
+Double-click `StartEditor.bat`. Python 3 is required; the script offers to install it via `winget` if not found.
+
+Both scripts read the port from `config.json`:
+
+```json
+{ "httpPort": 8003 }
+```
+
+Then open `http://localhost:8003` (or `http://localhost:8003/editor.html` if not renamed to `index.html`).
 
 ---
 
 ## File Format Reference
 
-### `.bx` — Original BounceX Format
-
-A plain JSON object. Keys are frame numbers (as strings); values are 4-element arrays.
+### Plain `.bx`
 
 ```json
 {
@@ -175,185 +213,96 @@ A plain JSON object. Keys are frame numbers (as strings); values are 4-element a
 }
 ```
 
-#### Marker array: `[depth, trans, ease, aux]`
+Keys are frame numbers (strings). Values are `[depth, trans, ease, aux]`.
 
 | Index | Field | Type | Description |
 |-------|-------|------|-------------|
-| 0 | `depth` | float 0.0–1.0 | Stroke depth. `0.0` = no stroke, `1.0` = maximum depth. |
-| 1 | `trans` | int 0–11 | Godot 4 `TransitionType`. Easing curve shape from this marker to the next. |
-| 2 | `ease` | int 0–3 | Godot 4 `EaseType`. Direction of the transition. |
-| 3 | `aux` | float | Reserved / unused. Always `0`. |
+| 0 | `depth` | float 0–1 | Stroke depth |
+| 1 | `trans` | int 0–11 | Godot 4 TransitionType (see table below) |
+| 2 | `ease` | int 0–3 | Godot 4 EaseType (see table below) |
+| 3 | `aux` | float | Reserved, always `0` |
 
-#### Transition types (`trans`)
+**Transition types:** 0=Linear, 1=Sine, 2=Quint, 3=Quart, 4=Quad, 5=Expo, 6=Elastic, 7=Cubic, 8=Circ, 9=Bounce, 10=Back, 11=Spring
 
-| Value | Name | Description |
-|-------|------|-------------|
-| 0 | Linear | Constant rate |
-| 1 | Sine | Sinusoidal |
-| 2 | Quint | 5th-power polynomial |
-| 3 | Quart | 4th-power polynomial |
-| 4 | Quad | Quadratic |
-| 5 | Expo | Exponential |
-| 6 | Elastic | Overshooting spring with oscillation |
-| 7 | Cubic | 3rd-power polynomial |
-| 8 | Circ | Circular arc |
-| 9 | Bounce | Bouncing ball simulation |
-| 10 | Back | Slight overshoot and return |
-| 11 | Spring | Damped spring |
+**Ease types:** 0=In, 1=Out, 2=In-Out, 3=Out-In
 
-#### Ease types (`ease`)
-
-| Value | Name | Description |
-|-------|------|-------------|
-| 0 | In | Slow start, fast end |
-| 1 | Out | Fast start, slow end |
-| 2 | In-Out | Slow start and end, fast middle |
-| 3 | Out-In | Fast start and end, slow middle |
-
-#### Interpolation
-
-Between adjacent markers A (frame `fA`) and B (frame `fB`):
-
-```
-t     = (f - fA) / (fB - fA)
-depth = A.depth + (B.depth - A.depth) * godotEase(t, B.trans, B.ease)
-```
-
-Easing parameters come from **marker B** (the destination). After the final marker, depth holds at that value.
+**Interpolation** between markers A→B: `depth = A.depth + (B.depth - A.depth) * godotEase(t, B.trans, B.ease)` where `t = (f - fA) / (fB - fA)`. Parameters come from the **destination** marker B.
 
 ---
 
-### Versioned structure (effects embedded in `.bx`)
-
-When effects are present the file uses a versioned wrapper. The extension is still `.bx`.
+### Versioned `.bx` (with effects)
 
 ```json
 {
   "version": 2,
-  "markers": {
-    "0":   [0.0, 1, 2, 0],
-    "120": [1.0, 1, 2, 0]
-  },
+  "markers": { "0": [0.0, 1, 2, 0], "120": [1.0, 1, 2, 0] },
   "effects": [
     {
-      "id":         "e1",
-      "type":       "text",
-      "layer":      0,
-      "startFrame": 60,
-      "endFrame":   300,
-      "fadeIn":     30,
-      "fadeOut":    30,
-      "text":       "Hello World",
-      "font":       "Rajdhani",
-      "fontSize":   50,
-      "color":      "#ffffff",
-      "opacity":    1.0,
-      "posX":       50,
-      "posY":       50
+      "id": "e1", "type": "text", "layer": 0,
+      "startFrame": 60, "endFrame": 300, "fadeIn": 30, "fadeOut": 30,
+      "text": "Hello", "font": "Rajdhani", "fontSize": 50,
+      "color": "#ffffff", "opacity": 1.0, "posX": 50, "posY": 50
     },
     {
-      "id":         "e2",
-      "type":       "pathColor",
-      "layer":      1,
-      "startFrame": 120,
-      "endFrame":   240,
-      "fadeIn":     60,
-      "fadeOut":    60,
-      "pathColor":  "#e05050",
-      "ballColor":  "#1a5fb4"
+      "id": "e2", "type": "pathColor", "layer": 0,
+      "startFrame": 120, "endFrame": 240, "fadeIn": 60, "fadeOut": 60,
+      "pathColor": "#e05050", "ballColor": "#1a5fb4"
     },
     {
-      "id":         "e3",
-      "type":       "pathSpeed",
-      "layer":      2,
-      "startFrame": 300,
-      "endFrame":   600,
-      "fadeIn":     60,
-      "fadeOut":    60,
-      "speed":      2.0
+      "id": "e3", "type": "pathSpeed", "layer": 0,
+      "startFrame": 300, "endFrame": 600, "fadeIn": 60, "fadeOut": 60,
+      "speed": 2.0
     }
   ]
 }
 ```
 
-#### Parsing `.bx` files
+**Parsing (one-liner for developers who only need markers):**
 
 ```js
-const parsed     = JSON.parse(fileContents)
-const isBx2      = parsed.version === 2
-const markerData = isBx2 ? parsed.markers : parsed
-const effects    = isBx2 && Array.isArray(parsed.effects) ? parsed.effects : []
+const parsed  = JSON.parse(fileContents)
+const markers = parsed.version === 2 ? parsed.markers : parsed
+// `markers` is now a plain .bx-compatible object — ignore `effects` entirely
 ```
-
-If you only care about markers, just use `markerData` and ignore `effects`.
-
-#### Top-level fields
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `version` | int | Always `2` when effects are present. Absent in plain `.bx`. |
-| `markers` | object | Same structure as plain `.bx`. |
-| `effects` | array | Zero or more effect objects. |
 
 #### Common effect fields
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | string | Unique identifier within the file. |
-| `type` | string | `"text"`, `"pathColor"`, or `"pathSpeed"`. |
-| `layer` | int | Track layer (0 = bottom). Effects on the same layer must not overlap. |
-| `startFrame` | int | First frame the effect is active (inclusive). |
-| `endFrame` | int | Last frame the effect is active (inclusive). |
-| `fadeIn` | int | Frames to ramp from 0 → full intensity. |
-| `fadeOut` | int | Frames to ramp from full intensity → 0. |
+| `id` | string | Unique within the file |
+| `type` | string | `"text"`, `"pathColor"`, or `"pathSpeed"` |
+| `layer` | int | Track layer; effects on the same layer must not overlap |
+| `startFrame` | int | First active frame (inclusive) |
+| `endFrame` | int | Last active frame (inclusive) |
+| `fadeIn` | int | Frames to ramp 0 → full |
+| `fadeOut` | int | Frames to ramp full → 0 |
 
-#### Fade alpha formula
+**Fade alpha:** `alpha = clamp(min(elapsed/fadeIn, (duration-elapsed)/fadeOut), 0, 1)` — supports fractional frames for smooth sub-frame interpolation.
 
-```
-duration = endFrame - startFrame
-elapsed  = frame - startFrame          // may be fractional for sub-frame accuracy
-alpha    = 1.0
-if fadeIn  > 0 and elapsed < fadeIn:
-    alpha = min(alpha, elapsed / fadeIn)
-if fadeOut > 0 and elapsed > (duration - fadeOut):
-    alpha = min(alpha, (duration - elapsed) / fadeOut)
-alpha = clamp(alpha, 0.0, 1.0)
-```
+#### `type: "text"` extra fields
 
-#### `type: "text"` fields
+| Field | Description |
+|-------|-------------|
+| `text` | Display string; `\n` = line break. Rendered text auto-shrinks to fit canvas width. |
+| `font` | CSS font-family |
+| `fontSize` | % of path area height |
+| `color` | CSS hex colour |
+| `opacity` | 0–1, multiplied by fade alpha |
+| `posX` / `posY` | % of path area width / height |
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `text` | string | Display text. `\n` = line break. |
-| `font` | string | CSS font-family name. |
-| `fontSize` | float | Font size as **% of path area height** (default 50). |
-| `color` | string | CSS hex colour. |
-| `opacity` | float | Base opacity 0–1, multiplied by fade alpha. |
-| `posX` | float | Horizontal position as % of path area width. |
-| `posY` | float | Vertical position as % of path area height (0 = top, 100 = bottom). |
+#### `type: "pathColor"` extra fields
 
-#### `type: "pathColor"` fields
+`pathColor` and `ballColor` — CSS hex. Blended as `lerp(default, target, alpha)` in linear RGB.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `pathColor` | string | Target waveform colour (CSS hex). |
-| `ballColor` | string | Target ball colour (CSS hex). |
+#### `type: "pathSpeed"` extra fields
 
-Linear RGB interpolation: `effective = lerp(defaultColor, targetColor, alpha)`
-
-#### `type: "pathSpeed"` fields
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `speed` | float | Target speed multiplier. Range 0.5–4.0 in 0.25 increments. |
-
-The effective speed at any frame is `lerp(1.0, speed, alpha)`. The waveform x-positions are computed by integrating per-frame speed outward from the playhead, so only frames inside the effect zone are stretched — frames outside remain at their normal spacing.
+`speed` — multiplier 0.5–4.0. Effective speed = `lerp(1.0, speed, alpha)`. Waveform x-positions integrate per-frame speed from the playhead so only the affected zone stretches.
 
 ---
 
 ## Browser Requirements
 
-- Chrome 86+ or Edge 86+ recommended (`showSaveFilePicker` gives a native OS save dialog)
-- Firefox works but uses a fallback `<a download>` link instead
-- Open via a local web server or directly as `file://`
-- No backend, no install — three static files: `editor.html`, `editor.css`, `editor.js`
+- Chrome 86+ or Edge 86+ — native save dialog, best experience
+- Firefox — fallback filename prompt + download link
+- Open via local web server or `file://`
+- No backend, no install — three files: `editor.html`, `editor.css`, `editor.js`
