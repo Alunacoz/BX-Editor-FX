@@ -136,6 +136,36 @@ const state = {
 let _effectIdCounter = 0
 function newEffectId() { return 'e' + (++_effectIdCounter) }
 
+// Persistent last-used settings per effect type (saved to localStorage)
+const _lastEffectSettings = {}
+function saveLastEffectSettings(type, props) {
+  // Only save the type-specific display properties — never structural fields
+  // (id, layer, startFrame, endFrame) which must stay unique per effect instance.
+  const EXCLUDE = new Set(['id', 'type', 'layer', 'startFrame', 'endFrame'])
+  const filtered = Object.fromEntries(
+    Object.entries(props).filter(([k]) => !EXCLUDE.has(k))
+  )
+  _lastEffectSettings[type] = filtered
+  try { localStorage.setItem('bxed_fx_last_' + type, JSON.stringify(filtered)) } catch(_) {}
+}
+function loadLastEffectSettings(type) {
+  const EXCLUDE = new Set(['id', 'type', 'layer', 'startFrame', 'endFrame'])
+  const strip = obj => obj
+    ? Object.fromEntries(Object.entries(obj).filter(([k]) => !EXCLUDE.has(k)))
+    : null
+  if (_lastEffectSettings[type]) return strip(_lastEffectSettings[type])
+  try {
+    const raw = localStorage.getItem('bxed_fx_last_' + type)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      const clean  = strip(parsed)
+      _lastEffectSettings[type] = clean
+      return clean
+    }
+  } catch(_) {}
+  return null
+}
+
 // ── Layout constants ──────────────────────────────────────────────────────────
 // Change these to adjust the default sizes. The panel is also user-resizable.
 const TL_H_DEFAULT    = 220   // marker timeline default height (px)
@@ -318,9 +348,9 @@ function init() {
 
   // Video events
   video.addEventListener('loadedmetadata', onVideoMetadata)
-  video.addEventListener('play',  updatePlayBtn)
-  video.addEventListener('pause', updatePlayBtn)
-  video.addEventListener('ended', updatePlayBtn)
+  video.addEventListener('play',  () => { updatePlayBtn(); updateRecordBtn() })
+  video.addEventListener('pause', () => { updatePlayBtn(); updateRecordBtn() })
+  video.addEventListener('ended', () => { updatePlayBtn(); updateRecordBtn() })
 
   // Timeline mouse
   timelineCanvas.addEventListener('mousedown',  onTlMouseDown)
@@ -704,31 +734,20 @@ async function exportBx2() {
 
   const hasEffects = state.effects.length > 0
 
-  let content, suggestedName, description, ext, mimeExts
-
-  if (hasEffects) {
-    // .bx2 — versioned format with effects
-    content      = JSON.stringify({ version: 2, markers: markerData, effects: state.effects }, null, 2)
-    suggestedName = 'path.bx2'
-    description   = 'BounceX2 Path File'
-    ext           = '.bx2'
-    mimeExts      = { 'application/json': ['.bx2'] }
-  } else {
-    // .bx — plain original format, maximum compatibility
-    content      = JSON.stringify(markerData)
-    suggestedName = 'path.bx'
-    description   = 'BounceX Path File'
-    ext           = '.bx'
-    mimeExts      = { 'application/json': ['.bx'] }
-  }
+  // Always export as .bx regardless of whether effects are present.
+  // No effects → plain .bx structure (maximum compatibility with all tools).
+  // Has effects → versioned structure inside a .bx file.
+  const content = hasEffects
+    ? JSON.stringify({ version: 2, markers: markerData, effects: state.effects }, null, 2)
+    : JSON.stringify(markerData)
 
   const blob = new Blob([content], { type: 'application/json' })
 
   if ('showSaveFilePicker' in window) {
     try {
       const handle = await window.showSaveFilePicker({
-        suggestedName,
-        types: [{ description, accept: mimeExts }],
+        suggestedName: 'path.bx',
+        types: [{ description: 'BounceX Path File', accept: { 'application/json': ['.bx'] } }],
       })
       const w = await handle.createWritable()
       await w.write(blob)
@@ -740,17 +759,16 @@ async function exportBx2() {
   }
   // Fallback download
   const url = URL.createObjectURL(blob)
-  const a = Object.assign(document.createElement('a'), { href: url, download: suggestedName })
+  const a = Object.assign(document.createElement('a'), { href: url, download: 'path.bx' })
   a.click()
   URL.revokeObjectURL(url)
 }
 
-/** Update the export button label to reflect the format that will be saved. */
+/** Update the export button label. Always .bx now. */
 function updateExportLabel() {
   const btn = document.getElementById('btnExport')
   if (!btn) return
-  btn.querySelector('.export-label').textContent =
-    state.effects.length > 0 ? 'Export .bx2' : 'Export .bx'
+  btn.querySelector('.export-label').textContent = 'Export .bx'
 }
 
 // ── Markers ───────────────────────────────────────────────────────────────────
@@ -1092,14 +1110,14 @@ function onTlMouseDown(e) {
   if (hitMarker >= 0) {
     const mode = e.shiftKey ? 'range' : (e.ctrlKey || e.metaKey) ? 'toggle' : 'single'
     selectMarker(hitMarker, mode)
-    // Prime for potential drag — only on single select without modifiers
+    // Prime for potential drag — only on single select without modifiers.
+    // Seek is deferred to onTlMouseUp so dragging never moves the playhead.
     if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
       tlMouse.draggingMarkerIdx = hitMarker
       tlMouse.dragStartX        = x
       tlMouse.dragStartFrame    = state.markers[hitMarker].frame
       document.body.style.userSelect = 'none'
     }
-    if (state.hasVideo) video.currentTime = state.markers[hitMarker].frame / FPS
   } else {
     if (!e.shiftKey && !e.ctrlKey && !e.metaKey) clearSelection()
     if (state.hasVideo) video.currentTime = clickedFrame / FPS
@@ -1170,6 +1188,11 @@ function onTlMouseLeave() {
 }
 
 function onTlMouseUp() {
+  // If we clicked a marker without dragging, seek to it now
+  if (tlMouse.draggingMarkerIdx >= 0 && !tlMouse.dragMoved && state.hasVideo) {
+    const m = state.markers[tlMouse.draggingMarkerIdx]
+    if (m) video.currentTime = m.frame / FPS
+  }
   tlMouse.down = false
   tlMouse.draggingPlayhead = false
   tlMouse.draggingMarkerIdx = -1
@@ -1315,20 +1338,10 @@ function renderTimeline() {
     const isHovered = tlHoverMarkerIdx === i
     const isNearest = state.nearestMarkerIdx === i && !isSel
 
-    let lineColor, headColor, alpha
-    if (isSel) {
-      lineColor = '#e8a020'; headColor = '#e8a020'; alpha = 1.0
-    } else if (isNearest) {
-      lineColor = '#3dd6c8'; headColor = '#3dd6c8'; alpha = 0.7
-    } else if (isHovered) {
-      lineColor = '#b07818'; headColor = '#b07818'; alpha = 0.9
-    } else {
-      lineColor = '#604808'; headColor = '#806010'; alpha = 0.55
-    }
-
-    ctx.globalAlpha = alpha
-
-    // Vertical line
+    // Vertical line colour — accent for selected, teal for nearest, white dim otherwise
+    const lineAlpha = isSel ? 1.0 : isNearest ? 0.7 : isHovered ? 0.6 : 0.3
+    const lineColor = isSel ? '#e8a020' : isNearest ? '#3dd6c8' : '#ffffff'
+    ctx.globalAlpha = lineAlpha
     ctx.strokeStyle = lineColor
     ctx.lineWidth   = isSel ? 1.5 : 1
     ctx.beginPath()
@@ -1336,28 +1349,39 @@ function renderTimeline() {
     ctx.lineTo(x + 0.5, H)
     ctx.stroke()
 
-    // Diamond head (below ruler) — larger for easier clicking
-    const r = isSel ? 8 : isHovered ? 7 : 6
-    const cy = RULER_H + r + 4
-    ctx.fillStyle = headColor
+    // Diamond at depth position — depth 0 = top, depth 1 = bottom of minimap area
+    const miniTop = RULER_H + 4
+    const miniH   = H - miniTop - 4
+    const r  = isSel ? 8 : isHovered ? 7 : 6
+    const cy = miniTop + (1 - m.depth) * miniH   // match minimap y mapping
+    // Clamp so diamond stays inside canvas with margin
+    const cyClamped = Math.max(miniTop + r, Math.min(H - r, cy))
+
+    // White fill, accent/teal outline when selected/nearest
+    ctx.globalAlpha = isSel ? 1.0 : isNearest ? 0.85 : isHovered ? 0.8 : 0.55
+    ctx.fillStyle   = '#ffffff'
     ctx.beginPath()
-    ctx.moveTo(x,     cy - r)
-    ctx.lineTo(x + r, cy)
-    ctx.lineTo(x,     cy + r)
-    ctx.lineTo(x - r, cy)
+    ctx.moveTo(x,     cyClamped - r)
+    ctx.lineTo(x + r, cyClamped)
+    ctx.lineTo(x,     cyClamped + r)
+    ctx.lineTo(x - r, cyClamped)
     ctx.closePath()
     ctx.fill()
+    if (isSel || isNearest) {
+      ctx.strokeStyle = isSel ? '#e8a020' : '#3dd6c8'
+      ctx.lineWidth   = 1.5
+      ctx.stroke()
+    }
 
-    // Depth value label (only when selected or hovered)
+    // Depth label when selected or hovered
     if (isSel || isHovered) {
       ctx.font = `9px 'JetBrains Mono', monospace`
       ctx.textAlign = 'center'
       ctx.textBaseline = 'top'
-      ctx.fillStyle = headColor
+      ctx.fillStyle = '#ffffff'
       ctx.globalAlpha = 0.9
-      const label = m.depth.toFixed(2)
-      const labelY = cy + r + 2
-      if (labelY + 11 < H) ctx.fillText(label, x, labelY)
+      const labelY = cyClamped + r + 2
+      if (labelY + 11 < H) ctx.fillText(m.depth.toFixed(2), x, labelY)
     }
 
     ctx.globalAlpha = 1
@@ -1444,8 +1468,62 @@ function renderPreview() {
   const curDepth = dA + (dB-dA)*frac
   const ballY = bottomY + curDepth * (topY - bottomY)
   const framesVisible = Math.ceil(W / PPF_PREV) + 2
-  const sf = Math.max(0, Math.floor(curFrameExact) - Math.floor(framesVisible/2))
-  const efEnd = Math.min(state.totalFrames-1, Math.floor(curFrameExact) + framesVisible)
+
+  // ── Per-frame speed integration ────────────────────────────────────────────
+  // Instead of one global ppfEffective, compute each frame's x by integrating
+  // speed from the playhead outward. Frames outside any speed effect use PPF_PREV;
+  // frames inside get the lerped speed for that specific frame. This means only
+  // the affected zone stretches — past/future frames outside the effect don't snap.
+  function speedAt(f) {
+    let s = 1.0
+    for (const eff of state.effects) {
+      if (eff.type !== 'pathSpeed') continue
+      const fade = getEffectFade(eff, f)
+      if (fade <= 0) continue
+      s = 1.0 + ((eff.speed || 1.0) - 1.0) * fade
+    }
+    return s
+  }
+
+  // Build a small x-position cache by stepping away from curFrameExact in both
+  // directions, accumulating (PPF_PREV * speedAt(f)) per frame.
+  const xCache = new Map()
+  xCache.set(curFrameExact, ballX)
+
+  // Step rightward (future frames)
+  let xAcc = ballX
+  const maxF = Math.min(state.totalFrames - 1, Math.ceil(curFrameExact) + Math.ceil(W / PPF_PREV) + 4)
+  for (let f = Math.ceil(curFrameExact); f <= maxF; f++) {
+    const step = PPF_PREV * speedAt(f - 0.5)
+    xAcc += step
+    xCache.set(f, xAcc)
+  }
+
+  // Step leftward (past frames)
+  xAcc = ballX
+  const minF = Math.max(0, Math.floor(curFrameExact) - Math.ceil(W / PPF_PREV) - 4)
+  for (let f = Math.floor(curFrameExact); f >= minF; f--) {
+    if (!xCache.has(f)) {
+      const step = PPF_PREV * speedAt(f + 0.5)
+      xAcc -= step
+      xCache.set(f, xAcc)
+    }
+  }
+
+  // Interpolate x for any fractional frame (the playhead itself)
+  function frameToX(f) {
+    if (xCache.has(f)) return xCache.get(f)
+    const fl = Math.floor(f), fr = Math.ceil(f)
+    const xl = xCache.get(fl) ?? (ballX + (fl - curFrameExact) * PPF_PREV)
+    const xr = xCache.get(fr) ?? (ballX + (fr - curFrameExact) * PPF_PREV)
+    return xl + (xr - xl) * (f - fl)
+  }
+
+  // For the speed label, read the current speed at the playhead
+  const activeSpeed = speedAt(curFrameExact)
+
+  const sf = minF
+  const efEnd = maxF
   const grad = ctx.createLinearGradient(0, 0, W, 0)
   grad.addColorStop(0,    `rgba(${pcStr},0)`)
   grad.addColorStop(0.12, `rgba(${pcStr},0.5)`)
@@ -1458,17 +1536,30 @@ function renderPreview() {
   ctx.beginPath(); let pathStarted = false
   for (let f = sf; f <= efEnd; f++) {
     const d = state.path[f]; if (d < 0) continue
-    const x = ballX + (f - curFrameExact)*PPF_PREV
+    const x = frameToX(f)
+    if (x < -20 || x > W + 20) continue
     const y = bottomY + d*(topY-bottomY)
     if (!pathStarted) { ctx.moveTo(x,y); pathStarted=true } else ctx.lineTo(x,y)
   }
   if (pathStarted) ctx.stroke()
 
+  // Speed label when a speed effect is active
+  if (activeSpeed !== 1.0) {
+    ctx.save()
+    ctx.font = `bold 10px 'JetBrains Mono', monospace`
+    ctx.textAlign = 'right'
+    ctx.textBaseline = 'top'
+    ctx.fillStyle = '#d07030'
+    ctx.globalAlpha = 0.85
+    ctx.fillText(`${activeSpeed}×`, W - 6, topY + 2)
+    ctx.restore()
+  }
+
   // Selected marker ticks
   if (state.selection.size > 0 && state.selection.size <= 32) {
     state.selection.forEach(idx => {
       const m = state.markers[idx]; if (!m) return
-      const x = ballX + (m.frame - curFrameExact)*PPF_PREV
+      const x = frameToX(m.frame)
       if (x < 0 || x > W) return
       ctx.strokeStyle = `rgba(${pcStr},0.4)`; ctx.lineWidth = 1
       ctx.setLineDash([3,3]); ctx.beginPath(); ctx.moveTo(x,EDGE_PAD); ctx.lineTo(x,H-EDGE_PAD); ctx.stroke(); ctx.setLineDash([])
@@ -1486,26 +1577,38 @@ function renderPreview() {
   ctx.restore()
 
   // ── Text effects ──────────────────────────────────────────────────────────────
+  // posX/posY are % of the path area (topY→bottomY).
+  const pathAreaH = bottomY - topY
   for (const eff of state.effects) {
     if (eff.type !== 'text') continue
     const fade = getEffectFade(eff, curFrame) * (eff.opacity ?? 1)
     if (fade <= 0) continue
     const fontFamily = eff.font || 'Rajdhani'
-    const actualFontSize = Math.max(4, Math.round((eff.fontSize || 8) / 100 * H))
+    const actualFontSize = Math.max(4, Math.round((eff.fontSize || 50) / 100 * pathAreaH))
     ctx.save()
     ctx.globalAlpha  = fade
     ctx.font         = `${actualFontSize}px '${fontFamily}', sans-serif`
     ctx.textAlign    = 'center'
-    ctx.textBaseline = 'middle'
+    ctx.textBaseline = 'alphabetic'
     ctx.fillStyle    = eff.color || '#ffffff'
     ctx.shadowColor  = 'rgba(0,0,0,0.85)'
     ctx.shadowBlur   = Math.max(2, Math.ceil(actualFontSize / 10))
+    // Measure glyph bounds after setting font so metrics match the actual render.
+    // With textBaseline='alphabetic', y is the baseline.
+    // To visually center at centerY:
+    //   baseline = centerY + (ascent - descent) / 2
+    const m = ctx.measureText('Ag')
+    const vAsc  = m.actualBoundingBoxAscent  ?? actualFontSize * 0.72
+    const vDesc = m.actualBoundingBoxDescent ?? actualFontSize * 0.18
+    const baselineOffset = (vAsc - vDesc) / 2  // shift baseline so glyph centers on centerY
+
     const tx = W * ((eff.posX ?? 50) / 100)
-    const ty = H * ((eff.posY ?? 80) / 100)
+    const centerY = topY + pathAreaH * ((eff.posY ?? 50) / 100)
     const lines = String(eff.text || '').split('\n')
     const lineH = actualFontSize * 1.25
     lines.forEach((line, li) => {
-      ctx.fillText(line, tx, ty + (li - (lines.length-1)/2) * lineH)
+      const lineCenterY = centerY + (li - (lines.length - 1) / 2) * lineH
+      ctx.fillText(line, tx, lineCenterY + baselineOffset)
     })
     ctx.restore()
   }
@@ -1648,24 +1751,73 @@ function onKeydown(e) {
     case 'ArrowLeft':
       if (inInput) return
       e.preventDefault()
-      if (state.hasVideo) {
+      // If a single marker is selected, set its depth to 0 (like record mode)
+      if (!state.recordMode && state.selection.size === 1) {
+        pushHistory()
+        const idx = [...state.selection][0]
+        state.markers[idx].depth = 0.0
+        rebuildPath(); renderMarkerList(); renderMarkerProps()
+      } else if (state.hasVideo) {
         const step = e.shiftKey ? 10 : 1
         video.currentTime = Math.max(0, video.currentTime - step / FPS)
+      }
+      break
+
+    case 'ArrowUp':
+      if (inInput) return
+      e.preventDefault()
+      if (!state.recordMode && state.selection.size === 1) {
+        pushHistory()
+        const idx = [...state.selection][0]
+        state.markers[idx].depth = 0.5
+        rebuildPath(); renderMarkerList(); renderMarkerProps()
       }
       break
 
     case 'ArrowRight':
       if (inInput) return
       e.preventDefault()
-      if (state.hasVideo) {
+      // If a single marker is selected, set its depth to 1 (like record mode)
+      if (!state.recordMode && state.selection.size === 1) {
+        pushHistory()
+        const idx = [...state.selection][0]
+        state.markers[idx].depth = 1.0
+        rebuildPath(); renderMarkerList(); renderMarkerProps()
+      } else if (state.hasVideo) {
         const step = e.shiftKey ? 10 : 1
         video.currentTime = Math.min(state.duration, video.currentTime + step / FPS)
       }
       break
 
+    case 'ArrowDown':
+      if (inInput) return
+      e.preventDefault()
+      // No-op but prevent scroll when a marker is selected
+      break
+
     case 'a':
     case 'A':
       if (!inInput && (e.ctrlKey || e.metaKey)) { e.preventDefault(); selectAll() }
+      break
+
+    case 'c':
+    case 'C':
+      if (!inInput && (e.ctrlKey || e.metaKey)) { e.preventDefault(); copySelection() }
+      break
+
+    case 'x':
+    case 'X':
+      if (!inInput && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault()
+        copySelection()
+        if (state.selectedEffectId) deleteSelectedEffect()
+        else if (state.selection.size > 0) deleteSelected()
+      }
+      break
+
+    case 'v':
+    case 'V':
+      if (!inInput && (e.ctrlKey || e.metaKey)) { e.preventDefault(); pasteSelection() }
       break
 
     case 'Escape':
@@ -1694,6 +1846,24 @@ function jumpMarker(dir) {
 }
 
 // ── Record Mode ───────────────────────────────────────────────────────────────
+
+function updateRecordBtn() {
+  if (!state.hasVideo) return
+  const btn = document.getElementById('btnRecord')
+  const canRecord = !video.paused && !video.ended
+  btn.disabled = !canRecord && !state.recordMode
+  btn.style.opacity = (!canRecord && !state.recordMode) ? '0.4' : ''
+  btn.title = canRecord
+    ? 'Record mode — play video and use ← ↑ → to stamp markers (R)'
+    : 'Pause recording or press Play first'
+  // Auto-exit record mode if video stops
+  if (state.recordMode && (video.paused || video.ended)) {
+    state.recordMode = false
+    btn.classList.remove('record-active')
+    btn.querySelector('.rec-label').textContent = 'Record'
+    document.getElementById('recIndicator').style.display = 'none'
+  }
+}
 
 function toggleRecordMode() {
   state.recordMode = !state.recordMode
@@ -1798,8 +1968,9 @@ const FX_RULER_H = 20
 const FX_TRACK_H = 34
 
 const ALL_EFFECT_TYPES = [
-  { type: 'text',      label: 'Text Overlay', desc: 'Fading text on the preview',       color: '#7060d0' },
-  { type: 'pathColor', label: 'Path Color',   desc: 'Animate path & ball color smoothly', color: '#3db88a' },
+  { type: 'text',      label: 'Text Overlay',  desc: 'Fading text on the preview',        color: '#7060d0' },
+  { type: 'pathColor', label: 'Path Color',    desc: 'Animate path & ball color smoothly', color: '#3db88a' },
+  { type: 'pathSpeed', label: 'Path Speed',    desc: 'Change path playback speed (0.5x–4x)', color: '#d07030' },
 ]
 
 function getEffectTypeInfo(type) {
@@ -1896,18 +2067,22 @@ const BUILTIN_FONTS = [
 
 function defaultEffectProps(type) {
   if (type === 'text') return {
-    text: 'New Text', font: 'Rajdhani', fontSize: 8,
-    color: '#ffffff', opacity: 1.0, fadeIn: 30, fadeOut: 30, posX: 50, posY: 80,
+    text: 'New Text', font: 'Rajdhani', fontSize: 50,
+    color: '#ffffff', opacity: 1.0, fadeIn: 30, fadeOut: 30, posX: 50, posY: 50,
   }
   if (type === 'pathColor') return {
     pathColor: '#e05050', ballColor: '#ffffff', fadeIn: 60, fadeOut: 60,
+  }
+  if (type === 'pathSpeed') return {
+    speed: 1.0, fadeIn: 0, fadeOut: 0,
   }
   return {}
 }
 
 function addEffect(type, startFrame, endFrame, forceLayer = null) {
   const layer = forceLayer !== null ? forceLayer : autoAssignLayer(startFrame, endFrame)
-  const ef = { id: newEffectId(), type, layer, startFrame, endFrame, ...defaultEffectProps(type) }
+  const saved = loadLastEffectSettings(type)
+  const ef = { id: newEffectId(), type, layer, startFrame, endFrame, ...defaultEffectProps(type), ...(saved || {}) }
   pushHistory()
   state.effects.push(ef)
   if (!state.fxVisible) toggleFxPanel()
@@ -2042,7 +2217,7 @@ function renderEffectProps() {
       </div>
       <div class="prop-row">
         <label class="prop-label">Size</label>
-        <input type="number" class="prop-input" id="fxFontSize" min="1" max="50" step="0.5" value="${ef.fontSize||8}" style="width:70px">
+        <input type="number" class="prop-input" id="fxFontSize" min="1" max="100" step="0.5" value="${ef.fontSize||50}" style="width:70px">
         <span style="font-size:11px;color:var(--text3);margin-left:4px">% h</span>
       </div>
       <div class="prop-row">
@@ -2079,6 +2254,15 @@ function renderEffectProps() {
         <span class="prop-color-hex" id="fxBallColorHex">${ef.ballColor||'#ffffff'}</span>
       </div>`
   }
+  if (ef.type === 'pathSpeed') {
+    const speedSteps = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 3.5, 4.0]
+    const speedOpts = speedSteps.map(s => `<option value="${s}"${(ef.speed||1.0)===s?' selected':''}>${s}×</option>`).join('')
+    typeFields = `
+      <div class="prop-row">
+        <label class="prop-label">Speed</label>
+        <select class="prop-select" id="fxSpeed">${speedOpts}</select>
+      </div>`
+  }
 
   form.innerHTML = `
     <div class="prop-row">
@@ -2104,7 +2288,14 @@ function renderEffectProps() {
       <button class="btn btn-danger-sm" id="fxDeleteBtn">Delete Effect</button>
     </div>`
 
-  const wireC = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('change', fn) }
+  // wireC: change listener that also persists settings after each change
+  const wireC = (id, fn) => {
+    const el = document.getElementById(id)
+    if (el) el.addEventListener('change', ev => {
+      fn(ev)
+      saveLastEffectSettings(ef.type, ef)
+    })
+  }
 
   // Scrub-wire all frame number inputs
   const g = id => document.getElementById(id)
@@ -2126,21 +2317,22 @@ function renderEffectProps() {
     wireC('fxPosX',     e => { ef.posX     = Math.max(0, Math.min(100, parseInt(e.target.value)||50)) })
     wireC('fxPosY',     e => { ef.posY     = Math.max(0, Math.min(100, parseInt(e.target.value)||80)) })
     // Scrub size and position
-    makeScrubInput(g('fxFontSize'), { min: 1, max: 50, step: 0.1, decimals: 1, onchange: v => { ef.fontSize = Math.max(1, v) } })
+    makeScrubInput(g('fxFontSize'), { min: 1, max: 100, step: 0.5, decimals: 1, onchange: v => { ef.fontSize = Math.max(1, v) } })
     makeScrubInput(g('fxPosX'),     { min: 0, max: 100, step: 0.5, decimals: 1, onchange: v => { ef.posX = Math.max(0, Math.min(100, v)) } })
     makeScrubInput(g('fxPosY'),     { min: 0, max: 100, step: 0.5, decimals: 1, onchange: v => { ef.posY = Math.max(0, Math.min(100, v)) } })
     const cEl = document.getElementById('fxColor'), cHx = document.getElementById('fxColorHex')
-    cEl.addEventListener('input', e => { ef.color = e.target.value; cHx.textContent = e.target.value })
+    cEl.addEventListener('input', e => { ef.color = e.target.value; cHx.textContent = e.target.value; saveLastEffectSettings(ef.type, ef) })
     const opS = document.getElementById('fxOpacitySlider'), opI = document.getElementById('fxOpacity')
-    opS.addEventListener('input',  e => { ef.opacity = parseFloat(e.target.value); opI.value = ef.opacity.toFixed(2) })
+    opS.addEventListener('input',  e => { ef.opacity = parseFloat(e.target.value); opI.value = ef.opacity.toFixed(2); saveLastEffectSettings(ef.type, ef) })
     opI.addEventListener('change', e => { const v = Math.max(0, Math.min(1, parseFloat(e.target.value)||0)); ef.opacity=v; opS.value=v; opI.value=v.toFixed(2) })
     document.getElementById('fxUploadFont').addEventListener('click', () => document.getElementById('fileInputFont').click())
   }
+  if (ef.type === 'pathSpeed') {
+    wireC('fxSpeed', e => { ef.speed = parseFloat(e.target.value) || 1.0 })
+  }
   if (ef.type === 'pathColor') {
-    const pcE = document.getElementById('fxPathColor'), pcH = document.getElementById('fxPathColorHex')
-    pcE.addEventListener('input', e => { ef.pathColor = e.target.value; pcH.textContent = e.target.value })
     const bcE = document.getElementById('fxBallColor'), bcH = document.getElementById('fxBallColorHex')
-    bcE.addEventListener('input', e => { ef.ballColor = e.target.value; bcH.textContent = e.target.value })
+    bcE.addEventListener('input', e => { ef.ballColor = e.target.value; bcH.textContent = e.target.value; saveLastEffectSettings(ef.type, ef) })
   }
 }
 
@@ -2365,6 +2557,107 @@ document.addEventListener('mousedown', ev => {
   const popup = document.getElementById('fxSearchPopup')
   if (popup && popup.style.display !== 'none' && !popup.contains(ev.target)) hideEffectSearch()
 }, true)
+
+// ── Copy / Paste ──────────────────────────────────────────────────────────────
+//
+// The clipboard holds either:
+//   { kind: 'markers', items: [{frame, depth, trans, ease}], anchorFrame }
+//   { kind: 'effect',  item: {...effect object} }
+//
+// Pasting markers offsets them so the first marker lands at the current
+// playhead. Pasting an effect places it starting at the playhead.
+
+let _clipboard = null
+
+function copySelection() {
+  // Effect takes priority if one is selected
+  if (state.selectedEffectId) {
+    const ef = state.effects.find(e => e.id === state.selectedEffectId)
+    if (!ef) return
+    _clipboard = { kind: 'effect', item: JSON.parse(JSON.stringify(ef)) }
+    flashClipboardMsg('Copied effect')
+    return
+  }
+
+  if (state.selection.size === 0) return
+  const sorted = [...state.selection]
+    .map(i => state.markers[i])
+    .filter(Boolean)
+    .sort((a, b) => a.frame - b.frame)
+  if (sorted.length === 0) return
+
+  _clipboard = {
+    kind: 'markers',
+    items: sorted.map(m => ({ ...m })),
+    anchorFrame: sorted[0].frame,   // first marker's frame is the paste anchor
+  }
+  flashClipboardMsg(`Copied ${sorted.length} marker${sorted.length > 1 ? 's' : ''}`)
+}
+
+function pasteSelection() {
+  if (!_clipboard) return
+
+  if (_clipboard.kind === 'effect') {
+    const src = _clipboard.item
+    const dur = src.endFrame - src.startFrame
+    const pasteStart = state.hasVideo ? currentFrame() : src.startFrame
+    const pasteEnd   = pasteStart + dur
+    const layer = autoAssignLayer(pasteStart, pasteEnd)
+    const pasted = {
+      ...JSON.parse(JSON.stringify(src)),
+      id: newEffectId(),
+      layer,
+      startFrame: pasteStart,
+      endFrame:   pasteEnd,
+    }
+    pushHistory()
+    state.effects.push(pasted)
+    if (!state.fxVisible) toggleFxPanel()
+    selectEffect(pasted.id)
+    updateExportLabel()
+    flashClipboardMsg('Pasted effect')
+    return
+  }
+
+  if (_clipboard.kind === 'markers' && _clipboard.items.length > 0) {
+    const offset = (state.hasVideo ? currentFrame() : 0) - _clipboard.anchorFrame
+    const newMarkers = _clipboard.items
+      .map(m => ({ ...m, frame: Math.max(0, Math.min(Math.max(state.totalFrames - 1, 0), m.frame + offset)) }))
+      // Skip frames already occupied
+      .filter(m => !state.markers.some(existing => existing.frame === m.frame))
+
+    if (newMarkers.length === 0) {
+      flashClipboardMsg('Nothing to paste (frames occupied)')
+      return
+    }
+
+    pushHistory()
+    state.markers.push(...newMarkers)
+    sortMarkers()
+    // Select the pasted markers
+    state.selection.clear()
+    for (const nm of newMarkers) {
+      const idx = state.markers.findIndex(m => m.frame === nm.frame)
+      if (idx >= 0) state.selection.add(idx)
+    }
+    state.lastClickedIdx = null
+    rebuildPath()
+    renderMarkerList()
+    renderMarkerProps()
+    updateMarkerCount()
+    flashClipboardMsg(`Pasted ${newMarkers.length} marker${newMarkers.length > 1 ? 's' : ''}`)
+  }
+}
+
+function flashClipboardMsg(text) {
+  // Reuse the toolbar frame badge area for a brief flash message
+  const el = document.getElementById('clipboardMsg')
+  if (!el) return
+  el.textContent = text
+  el.style.opacity = '1'
+  clearTimeout(el._timer)
+  el._timer = setTimeout(() => { el.style.opacity = '0' }, 1800)
+}
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
