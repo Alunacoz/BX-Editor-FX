@@ -325,6 +325,8 @@ function init() {
     document.getElementById('fileInputVideo').click())
   document.getElementById('btnLoadBx').addEventListener('click', () =>
     document.getElementById('fileInputBx').click())
+
+
   document.getElementById('fileInputVideo').addEventListener('change', e => {
     const f = e.target.files[0]; if (f) loadVideo(f); e.target.value = ''
   })
@@ -466,6 +468,30 @@ function init() {
     saveLayout()
   })
 
+  // Generate Cycle (BPM)
+  document.getElementById('btnGenerateCycle').addEventListener('click', openCycleDialog)
+  document.getElementById('bpmCreate').addEventListener('click', executeCycleGenerate)
+  document.getElementById('bpmCancel').addEventListener('click', closeCycleDialog)
+  document.getElementById('bpmOverlay').addEventListener('mousedown', e => {
+    if (e.target === document.getElementById('bpmOverlay')) closeCycleDialog()
+  })
+  document.getElementById('bpmInput').addEventListener('input', updateCyclePreview)
+  document.getElementById('bpmCountInput').addEventListener('input', updateCyclePreview)
+  document.getElementById('bpmHalve').addEventListener('click', () => {
+    const el = document.getElementById('bpmInput')
+    el.value = Math.max(1, parseFloat(el.value || 120) / 2)
+    updateCyclePreview()
+  })
+  document.getElementById('bpmDouble').addEventListener('click', () => {
+    const el = document.getElementById('bpmInput')
+    el.value = Math.min(999, parseFloat(el.value || 120) * 2)
+    updateCyclePreview()
+  })
+  document.getElementById('bpmOverlay').addEventListener('keydown', e => {
+    if (e.key === 'Escape') { closeCycleDialog(); e.stopPropagation() }
+    if (e.key === 'Enter') { e.preventDefault(); executeCycleGenerate() }
+  })
+
   // Effects timeline canvas events
   fxCanvas.addEventListener('mousedown',  onFxMouseDown)
   fxCanvas.addEventListener('mousemove',  onFxMouseMove)
@@ -536,6 +562,7 @@ function init() {
   document.getElementById('tabMarker').addEventListener('click', () => switchPropsTab('marker'))
   document.getElementById('tabEffect').addEventListener('click', () => switchPropsTab('effect'))
 
+
   // Render the initial default-settings state in the props panel
   renderMarkerProps()
 
@@ -555,17 +582,23 @@ function init() {
 
   // Drag & drop
   let dragDepth = 0
+  const clearDragOverlay = () => { dragDepth = 0; document.body.classList.remove('dragging-over') }
+
   document.addEventListener('dragenter', e => {
     if (e.dataTransfer.types.includes('Files')) { dragDepth++; document.body.classList.add('dragging-over') }
   })
-  document.addEventListener('dragleave', () => {
-    dragDepth--; if (dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('dragging-over') }
+  document.addEventListener('dragleave', e => {
+    dragDepth--
+    if (dragDepth <= 0) clearDragOverlay()
+    // Also clear if the cursor left the browser window entirely (relatedTarget is null)
+    if (e.relatedTarget === null) clearDragOverlay()
   })
+  document.addEventListener('dragend',   clearDragOverlay)
+  window.addEventListener('blur',        clearDragOverlay)  // window lost focus mid-drag
   document.addEventListener('dragover', e => e.preventDefault())
   document.addEventListener('drop', e => {
     e.preventDefault()
-    document.body.classList.remove('dragging-over')
-    dragDepth = 0
+    clearDragOverlay()
     const file = e.dataTransfer.files[0]
     if (!file) return
     if (file.type.startsWith('video/') || /\.(mp4|webm|mkv|mov|avi)$/i.test(file.name)) {
@@ -1584,27 +1617,33 @@ function renderPreview() {
     const fade = getEffectFade(eff, curFrame) * (eff.opacity ?? 1)
     if (fade <= 0) continue
     const fontFamily = eff.font || 'Rajdhani'
-    const actualFontSize = Math.max(4, Math.round((eff.fontSize || 50) / 100 * pathAreaH))
+    let actualFontSize = Math.max(4, Math.round((eff.fontSize || 50) / 100 * pathAreaH))
     ctx.save()
     ctx.globalAlpha  = fade
-    ctx.font         = `${actualFontSize}px '${fontFamily}', sans-serif`
     ctx.textAlign    = 'center'
     ctx.textBaseline = 'alphabetic'
     ctx.fillStyle    = eff.color || '#ffffff'
     ctx.shadowColor  = 'rgba(0,0,0,0.85)'
-    ctx.shadowBlur   = Math.max(2, Math.ceil(actualFontSize / 10))
-    // Measure glyph bounds after setting font so metrics match the actual render.
-    // With textBaseline='alphabetic', y is the baseline.
-    // To visually center at centerY:
-    //   baseline = centerY + (ascent - descent) / 2
+
+    const lines = String(eff.text || '').split('\n')
+    const maxAllowedW = W * 0.92
+
+    // Measure at nominal size; shrink font if widest line overflows
+    ctx.font = `${actualFontSize}px '${fontFamily}', sans-serif`
+    const widestLine = lines.reduce((max, l) => Math.max(max, ctx.measureText(l).width), 0)
+    if (widestLine > maxAllowedW) {
+      actualFontSize = Math.max(4, Math.floor(actualFontSize * maxAllowedW / widestLine))
+      ctx.font = `${actualFontSize}px '${fontFamily}', sans-serif`
+    }
+
+    ctx.shadowBlur = Math.max(2, Math.ceil(actualFontSize / 10))
     const m = ctx.measureText('Ag')
     const vAsc  = m.actualBoundingBoxAscent  ?? actualFontSize * 0.72
     const vDesc = m.actualBoundingBoxDescent ?? actualFontSize * 0.18
-    const baselineOffset = (vAsc - vDesc) / 2  // shift baseline so glyph centers on centerY
+    const baselineOffset = (vAsc - vDesc) / 2
 
     const tx = W * ((eff.posX ?? 50) / 100)
     const centerY = topY + pathAreaH * ((eff.posY ?? 50) / 100)
-    const lines = String(eff.text || '').split('\n')
     const lineH = actualFontSize * 1.25
     lines.forEach((line, li) => {
       const lineCenterY = centerY + (li - (lines.length - 1) / 2) * lineH
@@ -1751,11 +1790,9 @@ function onKeydown(e) {
     case 'ArrowLeft':
       if (inInput) return
       e.preventDefault()
-      // If a single marker is selected, set its depth to 0 (like record mode)
-      if (!state.recordMode && state.selection.size === 1) {
+      if (!state.recordMode && state.selection.size >= 1) {
         pushHistory()
-        const idx = [...state.selection][0]
-        state.markers[idx].depth = 0.0
+        for (const idx of state.selection) state.markers[idx].depth = 0.0
         rebuildPath(); renderMarkerList(); renderMarkerProps()
       } else if (state.hasVideo) {
         const step = e.shiftKey ? 10 : 1
@@ -1766,10 +1803,9 @@ function onKeydown(e) {
     case 'ArrowUp':
       if (inInput) return
       e.preventDefault()
-      if (!state.recordMode && state.selection.size === 1) {
+      if (!state.recordMode && state.selection.size >= 1) {
         pushHistory()
-        const idx = [...state.selection][0]
-        state.markers[idx].depth = 0.5
+        for (const idx of state.selection) state.markers[idx].depth = 0.5
         rebuildPath(); renderMarkerList(); renderMarkerProps()
       }
       break
@@ -1777,11 +1813,9 @@ function onKeydown(e) {
     case 'ArrowRight':
       if (inInput) return
       e.preventDefault()
-      // If a single marker is selected, set its depth to 1 (like record mode)
-      if (!state.recordMode && state.selection.size === 1) {
+      if (!state.recordMode && state.selection.size >= 1) {
         pushHistory()
-        const idx = [...state.selection][0]
-        state.markers[idx].depth = 1.0
+        for (const idx of state.selection) state.markers[idx].depth = 1.0
         rebuildPath(); renderMarkerList(); renderMarkerProps()
       } else if (state.hasVideo) {
         const step = e.shiftKey ? 10 : 1
@@ -1849,16 +1883,10 @@ function jumpMarker(dir) {
 
 function updateRecordBtn() {
   if (!state.hasVideo) return
-  const btn = document.getElementById('btnRecord')
-  const canRecord = !video.paused && !video.ended
-  btn.disabled = !canRecord && !state.recordMode
-  btn.style.opacity = (!canRecord && !state.recordMode) ? '0.4' : ''
-  btn.title = canRecord
-    ? 'Record mode — play video and use ← ↑ → to stamp markers (R)'
-    : 'Pause recording or press Play first'
-  // Auto-exit record mode if video stops
+  // Auto-exit record mode if video stops — but never disable the button itself
   if (state.recordMode && (video.paused || video.ended)) {
     state.recordMode = false
+    const btn = document.getElementById('btnRecord')
     btn.classList.remove('record-active')
     btn.querySelector('.rec-label').textContent = 'Record'
     document.getElementById('recIndicator').style.display = 'none'
@@ -1871,7 +1899,7 @@ function toggleRecordMode() {
   btn.classList.toggle('record-active', state.recordMode)
   btn.querySelector('.rec-label').textContent = state.recordMode ? 'RECORDING' : 'Record'
   document.getElementById('recIndicator').style.display = state.recordMode ? 'flex' : 'none'
-  // Auto-play when entering record mode
+  // Always start playback when entering record mode, whether paused or not
   if (state.recordMode && state.hasVideo && video.paused) video.play()
 }
 
@@ -2659,6 +2687,90 @@ function flashClipboardMsg(text) {
   el._timer = setTimeout(() => { el.style.opacity = '0' }, 1800)
 }
 
-// ── Boot ──────────────────────────────────────────────────────────────────────
+// ── Generate Cycle (BPM marker generator) ────────────────────────────────────
+//
+// Places depth-0 markers from the playhead to the end of the video at the
+// given BPM. Because BPM is often not evenly divisible into whole frames, a
+// Bresenham-style accumulator is used: each beat's ideal position is computed
+// as a float (startFrame + n × framesPerBeat) and rounded to the nearest
+// integer. This means rounding error never compounds — each beat independently
+// corrects for the drift of the previous one.
+
+function openCycleDialog() {
+  const overlay = document.getElementById('bpmOverlay')
+  overlay.style.display = 'flex'
+  const input = document.getElementById('bpmInput')
+  input.select()
+  input.focus()
+  updateCyclePreview()
+}
+
+function closeCycleDialog() {
+  document.getElementById('bpmOverlay').style.display = 'none'
+}
+
+function computeCycleFrames(bpm, startFrame, maxCount = Infinity) {
+  if (bpm <= 0 || !isFinite(bpm) || state.totalFrames === 0) return []
+  const framesPerBeat = (60 / bpm) * FPS
+  const endFrame = state.totalFrames - 1
+  const frames = []
+  let beatIndex = 0
+  while (true) {
+    if (frames.length >= maxCount) break
+    const idealFrame = startFrame + beatIndex * framesPerBeat
+    const f = Math.round(idealFrame)
+    if (f > endFrame) break
+    frames.push(f)
+    beatIndex++
+  }
+  return frames
+}
+
+function updateCyclePreview() {
+  const bpm      = parseFloat(document.getElementById('bpmInput').value) || 120
+  const countRaw = document.getElementById('bpmCountInput').value.trim()
+  const maxCount = countRaw === '' ? Infinity : Math.max(1, parseInt(countRaw) || 1)
+  const start    = currentFrame()
+  const fpb      = (60 / bpm) * FPS
+  const frames   = computeCycleFrames(bpm, start, maxCount)
+  const newCount  = frames.filter(f => !state.markers.some(m => m.frame === f)).length
+  const skipCount = frames.length - newCount
+  const drift     = fpb % 1
+  const driftMs   = (drift * 1000 / FPS).toFixed(1)
+
+  let msg = `<b>${frames.length}</b> beats · <b>${fpb.toFixed(3)}</b> frames/beat`
+  msg += drift < 0.001
+    ? ' · <span style="color:var(--accent2)">exact alignment</span>'
+    : ` · max drift ±${driftMs} ms`
+  if (skipCount > 0) msg += ` · <span style="color:#f07849">${skipCount} skipped (occupied)</span>`
+
+  document.getElementById('bpmPreview').innerHTML = msg
+}
+
+function executeCycleGenerate() {
+  const bpm      = parseFloat(document.getElementById('bpmInput').value) || 120
+  const countRaw = document.getElementById('bpmCountInput').value.trim()
+  const maxCount = countRaw === '' ? Infinity : Math.max(1, parseInt(countRaw) || 1)
+  const start    = currentFrame()
+  if (bpm <= 0 || !state.hasVideo) return
+
+  const frames = computeCycleFrames(bpm, start, maxCount)
+  const toAdd  = frames.filter(f => !state.markers.some(m => m.frame === f))
+  if (toAdd.length === 0) { closeCycleDialog(); return }
+
+  pushHistory()
+  for (const f of toAdd) {
+    state.markers.push({ frame: f, depth: 0, trans: state.defaultTrans, ease: state.defaultEase })
+  }
+  sortMarkers()
+  rebuildPath()
+  renderMarkerList()
+  renderMarkerProps()
+  updateMarkerCount()
+  closeCycleDialog()
+  flashClipboardMsg(`Generated ${toAdd.length} markers at ${bpm} BPM`)
+}
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', init)

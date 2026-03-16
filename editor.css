@@ -43,32 +43,32 @@ input:focus, select:focus { outline: 1px solid var(--accent); outline-offset: -1
   display: flex;
   align-items: center;
   gap: 0;
-  height: 46px;
-  padding: 0 12px;
+  height: 36px;
+  padding: 0 10px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
-  gap: 8px;
+  gap: 6px;
 }
 
 .toolbar-brand {
   display: flex;
   align-items: baseline;
   gap: 3px;
-  margin-right: 8px;
+  margin-right: 6px;
   flex-shrink: 0;
 }
 .brand-bx {
   font-family: var(--ui);
   font-weight: 700;
-  font-size: 18px;
+  font-size: 15px;
   letter-spacing: 0.08em;
   color: var(--accent);
 }
 .brand-editor {
   font-family: var(--ui);
   font-weight: 500;
-  font-size: 13px;
+  font-size: 11px;
   letter-spacing: 0.12em;
   color: var(--text3);
 }
@@ -97,8 +97,8 @@ input:focus, select:focus { outline: 1px solid var(--accent); outline-offset: -1
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border: none;
   border-radius: var(--radius);
   background: var(--surface3);
@@ -107,8 +107,8 @@ input:focus, select:focus { outline: 1px solid var(--accent); outline-offset: -1
 }
 .transport-btn:hover { background: var(--border2); color: var(--text); }
 .transport-play {
-  width: 32px;
-  height: 32px;
+  width: 26px;
+  height: 26px;
   background: var(--accent);
   color: #000;
 }
@@ -213,14 +213,14 @@ input:focus, select:focus { outline: 1px solid var(--accent); outline-offset: -1
 .btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  height: 28px;
-  padding: 0 10px;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
   border: 1px solid var(--border2);
   border-radius: var(--radius);
   font-family: var(--ui);
   font-weight: 600;
-  font-size: 13px;
+  font-size: 11px;
   letter-spacing: 0.04em;
   white-space: nowrap;
   transition: background 0.12s, color 0.12s, border-color 0.12s;
@@ -340,6 +340,23 @@ input:focus, select:focus { outline: 1px solid var(--accent); outline-offset: -1
   flex-shrink: 0;
 }
 .btn-icon-add:hover { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+
+.btn-icon-cycle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text2);
+  transition: background 0.12s, color 0.12s;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.btn-icon-cycle:hover { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
 
 /* ── Workspace ────────────────────────────────────────────────── */
 .workspace {
@@ -1037,3 +1054,86 @@ body.dragging-over::after {
   line-height: 1.5;
 }
 .prop-textarea:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
+
+
+/* ── BPM Generator Modal ──────────────────────────────── */
+
+/* ── BPM Cycle Generator dialog ─────────────────────────────────── */
+.bpm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9000;
+}
+.bpm-dialog {
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  padding: 16px 18px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+}
+.bpm-dialog-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+.bpm-dialog-desc {
+  font-size: 11px;
+  color: var(--text3);
+  line-height: 1.55;
+  margin: 0;
+}
+.bpm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.bpm-label {
+  font-size: 11px;
+  color: var(--text3);
+  width: 72px;
+  flex-shrink: 0;
+}
+.bpm-input {
+  background: var(--surface3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 5px 8px;
+  width: 110px;
+  flex-shrink: 0;
+}
+.bpm-input:focus { outline: none; border-color: var(--accent); }
+.bpm-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.bpm-half {
+  height: 24px;
+  padding: 0 7px;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.bpm-preview {
+  font-size: 10px;
+  color: var(--text3);
+  font-family: var(--mono);
+  line-height: 1.5;
+  flex: 1;
+  min-width: 0;
+}

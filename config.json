@@ -1,4 +1,3 @@
 {
-  "httpPort": 8003,
-  "managerPort": 8001
+  "httpPort": 8003
 }

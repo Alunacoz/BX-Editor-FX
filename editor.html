@@ -43,7 +43,7 @@
         <span class="rec-dot"></span>
         <span class="rec-label">Record</span>
       </button>
-    </div>
+      </div>
 
     <div class="toolbar-transport">
       <button class="transport-btn" id="btnRewind" title="Rewind to start">
@@ -189,6 +189,10 @@
           <button class="btn-icon-add" id="btnAddMarker" title="Add marker at current frame (M)">
             <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg>
           </button>
+          <button class="btn-icon-cycle" id="btnGenerateCycle" title="Generate cycle markers at a given BPM">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" width="11" height="11"><circle cx="6" cy="6" r="4.5"/><path d="M6 3.5v2.5l2 1.2"/></svg>
+            <span style="font-size:9px;letter-spacing:0.02em;line-height:1">Cycle</span>
+          </button>
         </div>
         <div class="marker-list" id="markerList">
           <div class="markers-empty">No markers yet.<br>Press <strong>M</strong> to add one at the playhead.</div>
@@ -253,12 +257,42 @@
     <div class="fx-search-results" id="fxSearchResults"></div>
   </div>
 
+
 </div><!-- /.app -->
 
 <!-- Hidden file inputs -->
 <input type="file" id="fileInputVideo" accept="video/*" hidden>
 <input type="file" id="fileInputBx" accept=".bx,.bx2,.json" hidden>
 <input type="file" id="fileInputFont" accept=".ttf,.otf,.woff,.woff2" hidden>
+
+
+
+<!-- ── BPM Cycle Generator Dialog ─────────────────────────────────────────── -->
+<div class="bpm-overlay" id="bpmOverlay" style="display:none">
+  <div class="bpm-dialog" id="bpmDialog">
+    <div class="bpm-dialog-title">Generate Cycle</div>
+    <p class="bpm-dialog-desc">Places depth-0 markers from the playhead to the end of the video at the given BPM. Fractional frame offsets are accumulated so timing stays accurate over long sequences.</p>
+    <div class="bpm-row">
+      <label class="bpm-label" for="bpmInput">BPM</label>
+      <input class="bpm-input" id="bpmInput" type="number" min="1" max="999" step="0.01" value="120" autocomplete="off">
+      <button class="btn btn-ghost bpm-half" id="bpmHalve" title="Halve BPM">½</button>
+      <button class="btn btn-ghost bpm-half" id="bpmDouble" title="Double BPM">×2</button>
+    </div>
+    <div class="bpm-row" style="margin-top:4px">
+      <label class="bpm-label" for="bpmOffsetInput">Offset beats</label>
+      <input class="bpm-input" id="bpmOffsetInput" type="number" min="0" step="1" value="0" title="Skip this many beats before placing the first marker (useful for pickup bars)">
+    </div>
+    <div class="bpm-row" style="margin-top:4px">
+      <label class="bpm-label" for="bpmCountInput">Count</label>
+      <input class="bpm-input" id="bpmCountInput" type="number" min="1" step="1" placeholder="all" title="Number of markers to place — leave blank to fill the entire timeline">
+    </div>
+    <div class="bpm-actions">
+      <button class="btn btn-accent" id="bpmCreate">Create</button>
+      <button class="btn btn-ghost" id="bpmCancel">Cancel</button>
+      <span class="bpm-preview" id="bpmPreview"></span>
+    </div>
+  </div>
+</div>
 
 <script src="editor.js"></script>
 </body>
