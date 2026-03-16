@@ -1,6 +1,6 @@
 # BounceX Editor
 
-A standalone path editor for [BounceX-Viewer](https://github.com/Alunacoz/BounceX-Viewer). Sync video playback with marker placement and export `.bx` path files. This tool and summary (right now) have been written with generative AI so it may not be perfectly accurate. For most questions that are not answered here, please contact me (Alunacoz) on the [DH Discord Server](https://discord.gg/u6CZ3Zm4PC)!
+A standalone path editor for [BounceX-Viewer](https://github.com/Alunacoz/BounceX-Viewer). Sync video playback with marker placement and export `.bx` path files. This tool and summary (right now) have been written with generative AI so it may not be perfectly accurate. For most questions that are not answered here, please contact me (Alunacoz) on the [DH Discord Server](https://discord.gg/u6CZ3Zm4PC) in #bouncex-player or DMs!
 
 ---
 
