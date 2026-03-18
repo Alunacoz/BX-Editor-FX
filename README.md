@@ -2,6 +2,8 @@
 
 A standalone path editor for [BounceX-Viewer](https://github.com/Alunacoz/BounceX-Viewer). Sync video playback with marker placement and export `.bx` path files. This tool and summary (right now) have been written with generative AI so it may not be perfectly accurate. For most questions that are not answered here, please contact me (Alunacoz) on the [DH Discord Server](https://discord.gg/u6CZ3Zm4PC) in #bouncex-player or DMs!
 
+NOTE: This editor does NOT support making pre-rendered frames for use in video editing software. To render frames and bake them into the video, you can use the original [BounceX Editor](https://github.com/clbhundley/BounceX) and render it from there! Alternatively, you can watch them in BounceX-Viewer then screen record it to "bake" the path into the video.
+
 ---
 
 ## Getting Started
