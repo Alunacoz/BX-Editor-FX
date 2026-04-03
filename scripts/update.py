@@ -1,49 +1,64 @@
 #!/usr/bin/env python3
 """
-BX-Editor-FX Updater
+BX Editor Updater
 
 1. Ensures git is installed (installs it if not)
 2. Ensures this is a git repo pointed at the right remote (initialises if not)
 3. Runs git pull --ff-only origin main (or resets to origin/main on first init)
 
-User data (videos/, playlists/, config.json, venv/) is never touched — git
-only modifies files it tracks, and those directories are in .gitignore.
+User data (config.json, venv/) is never touched — git only modifies files it
+tracks, and those are listed in .gitignore.
 """
 
 import subprocess
 import sys
 from pathlib import Path
 
-ROOT        = Path(__file__).parent.parent.resolve()   # scripts/ -> project root
+
 GITHUB_REPO = "Alunacoz/BX-Editor-FX"
 REMOTE_URL  = f"https://github.com/{GITHUB_REPO}.git"
 BRANCH      = "main"
 
 GITIGNORE_LINES = [
-    "videos/",
-    "playlists/",
     "venv/",
     "config.json",
     "__pycache__/",
     "*.pyc",
-    "Packaging/",
-    "Tools/",
 ]
+
+
+# ── Root detection ────────────────────────────────────────────────────────────
+
+def _find_root() -> Path:
+    """
+    Walk up from this file's location until we find a directory containing
+    index.html — that's the project root. Works whether update.py is run
+    from scripts/, the root, or anywhere else.
+    """
+    candidate = Path(__file__).resolve().parent
+    for _ in range(6):
+        if (candidate / "index.html").exists():
+            return candidate
+        candidate = candidate.parent
+    print("  !!  Could not locate the BX Editor project root.")
+    print("      Make sure index.html exists in the project folder.")
+    print("      Do not move update.py outside the project.")
+    sys.exit(1)
+
+ROOT = _find_root()
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def ok(text):     print(f"  OK  {text}")
-def info(text):   print(f"      {text}")
-def step(text):   print(f"  >>  {text}")
-def fail(text):   print(f"  !!  {text}", file=sys.stderr)
+def ok(text):   print(f"  OK  {text}")
+def info(text): print(f"      {text}")
+def step(text): print(f"  >>  {text}")
+def fail(text): print(f"  !!  {text}", file=sys.stderr)
 
 def run(args, **kwargs):
-    """Run a command, return CompletedProcess. Raises on non-zero exit."""
     return subprocess.run(args, check=True, cwd=ROOT, **kwargs)
 
 def run_out(args):
-    """Run a command and return its stdout as a stripped string."""
     r = subprocess.run(args, capture_output=True, text=True, cwd=ROOT)
     return r.stdout.strip(), r.returncode
 
@@ -51,12 +66,10 @@ def run_out(args):
 # ── Git installation ──────────────────────────────────────────────────────────
 
 def find_git():
-    """Return the git executable path, or None if not found."""
     import shutil
     found = shutil.which("git")
     if found:
         return found
-    # Common Windows install locations
     for p in [
         r"C:\Program Files\Git\cmd\git.exe",
         r"C:\Program Files (x86)\Git\cmd\git.exe",
@@ -67,11 +80,6 @@ def find_git():
 
 
 def ensure_git():
-    """
-    Make sure git is available.
-    If not found, describes what it will do and asks the user before touching
-    anything. Returns the git path, or exits.
-    """
     import shutil
 
     git = find_git()
@@ -83,7 +91,6 @@ def ensure_git():
     fail("git is not installed.")
     print()
 
-    # ── Describe what we'd do, then ask ──────────────────────────────────────
     plat = sys.platform
     if plat == "win32":
         info("git can be installed via winget:")
@@ -115,7 +122,6 @@ def ensure_git():
         _pause()
         sys.exit(1)
 
-    # ── Carry out the install ─────────────────────────────────────────────────
     print()
     if plat == "win32":
         step("Running: winget install Git.Git")
@@ -178,14 +184,8 @@ def ensure_git():
 
 def ensure_gitignore():
     gi = ROOT / ".gitignore"
-    if gi.exists():
-        existing = gi.read_text(encoding="utf-8")
-    else:
-        existing = ""
-    added = []
-    for line in GITIGNORE_LINES:
-        if line not in existing:
-            added.append(line)
+    existing = gi.read_text(encoding="utf-8") if gi.exists() else ""
+    added = [l for l in GITIGNORE_LINES if l not in existing]
     if added:
         with gi.open("a", encoding="utf-8") as f:
             if existing and not existing.endswith("\n"):
@@ -204,12 +204,7 @@ def is_git_repo(git):
 
 
 def ensure_repo(git):
-    """
-    If ROOT is already a git repo, do nothing.
-    Otherwise init it and point it at the remote — ready for a pull.
-    """
     if is_git_repo(git):
-        # Make sure the remote is set correctly
         remote_url, code = run_out([git, "remote", "get-url", "origin"])
         if code != 0:
             step("Adding remote origin...")
@@ -221,14 +216,14 @@ def ensure_repo(git):
             ok(f"Remote updated to {REMOTE_URL}")
         else:
             ok(f"Remote OK ({REMOTE_URL})")
-        return False   # not a fresh init
+        return False
     else:
         step("Initialising git repository...")
         ensure_gitignore()
         run([git, "init", "-b", BRANCH])
         run([git, "remote", "add", "origin", REMOTE_URL])
         ok(f"Repository initialised, remote -> {REMOTE_URL}")
-        return True    # fresh init — caller needs to do a hard reset instead of pull
+        return True
 
 
 # ── Update ────────────────────────────────────────────────────────────────────
@@ -239,16 +234,12 @@ def do_update(git, fresh_init):
     ok("Fetch complete")
 
     if fresh_init:
-        # No local history yet — hard-reset to the remote branch.
-        # Untracked files (videos/, venv/, etc.) are left alone by reset --hard.
         step("Aligning working tree to remote...")
         run([git, "reset", "--hard", f"origin/{BRANCH}"])
         run([git, "branch", "--set-upstream-to", f"origin/{BRANCH}", BRANCH])
         ok("Working tree aligned to remote")
     else:
         step("Pulling latest changes...")
-        # Use --ff-only so we never silently create a merge commit.
-        # If local edits conflict, tell the user rather than mangling their tree.
         r = subprocess.run(
             [git, "pull", "--ff-only", "origin", BRANCH],
             cwd=ROOT,
@@ -275,8 +266,8 @@ def _pause():
 
 if __name__ == "__main__":
     print()
-    print("  BounceX Viewer - Updater")
-    print("  " + "=" * 24)
+    print("  BX Editor - Updater")
+    print("  " + "=" * 20)
     print()
 
     step("Checking for git...")

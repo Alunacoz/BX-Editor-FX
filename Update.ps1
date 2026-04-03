@@ -1,10 +1,10 @@
-# BounceX Viewer - Updater
+# BX-Editor-FX Updater
 # Double-click, or: powershell -ExecutionPolicy Bypass -File Update.ps1
 
 Set-Location $PSScriptRoot
 
 Write-Host ""
-Write-Host "  BounceX Viewer - Updater" -ForegroundColor Cyan
+Write-Host "  BX-Editor-FX - Updater" -ForegroundColor Cyan
 Write-Host ""
 
 $py = $null
